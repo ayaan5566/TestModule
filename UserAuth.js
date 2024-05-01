@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const Users = require('./UserDetail');
 const BattleUser=require('./BattleUserDetail')
-let crypto = require("node:crypto")
+let crypto = require("node:crypto");
 let GameStats={
   win: {
     xp: 50,
@@ -19,86 +19,75 @@ function generateRoomId() {
 app.use(express.json());
 
 
-app.post("/login", (req, res) => {
-  const { mailId } = req.body;
-  const user = Users.find((user) => user.mailId === mailId);
-  if (user) {
-    user.online = true;
-    res.send({ message: `${user.name} Successfully logged In` });
-  } else {
-    res.send({ message: "User not found" });
+app.post("/login",(req,res)=>{
+  const{mailId}=req.body;
+  const user = Users.find(user => user.mailId === mailId);
+  if (!user) {
+    res.send( {message:"User not found"})
   }
-});
+  if (user.online) {
+    res.send({message:"User is already logged in"}) ;
+  }
+  user.online = true;
+  res.send({message:`${user.name} Successfully logged In`});
+})
 
 app.post("/logout", (req, res) => {
   const { mailId } = req.body;
   const user = Users.find((user) => user.mailId === mailId);
-  if (user) {
-    user.online = false;
-    res.send({ message: `${user.name} Successfully logged Out` });
-  } else {
-    res.send({ message: "User not found" });
-  }
+ if(!user.online){
+  res.send({message:"User is already logged out"})
+ }
+ user.online=false;
+ res.send({message:`${user.name}Successfully logged out`})
 });
 
-let Battles = [];
 let BattleHistory = [];
 app.post("/battle/request", (req, res) => {
   const { id} = req.body;
-  const player = BattleUser.find((player) => player.id === id);
+  const player = Users.find((player) => player.id === id);
   
   if (!player){
     return { message: "Player not found" };
   }
-  if (!player.online) {
-    return { message: "Player is offline" };
+  if(!player.online)
+  {
+    return{message:"Player is offline"}
   }
-
-    let players=[{...player,prevCups: 0, CupBonus: 0, prevXp: 0, XpBonus: 0}]
-    let  battle = {
-      roomId: generateRoomId(),
-      state: 1,
-      players
-    };
-    Battles.push(battle);
-    let data = {roomId:battle.roomId,
-    state:battle.state,
-    players
-    }
-    return res.send(data)
-  }
+    let players=[{...player, cups: 0,  xp: 0}]
+    let existingBattle = BattleHistory.find(battle => battle.players.some(players => players.id === id));
+    if (existingBattle) {
+      // update existing battle
+      existingBattle.state = existingBattle.players.length + 1;
+      existingBattle.players.push({
+        team:existingBattle.players.length + 1,
+        players
+      });
+    } 
+      // create new battle
+      let newBattle = {
+        roomId: generateRoomId(),
+        state: 1,
+        players
+      };
+      let data = {roomId:newBattle.roomId,
+        state:newBattle.state,
+        players
+      }
+      BattleHistory.push(data);
+  
+    
+  return res.send(data)
+}
 
 );
-
-
-app.post('/join-battle', (req, res) => {
-  let playerId = req.body.playerId;
-  let roomId = req.body.roomId;
-  let battleData = Battles.find(b => b.roomId === roomId);
-
-  // console.log(battleData)
-  if (battleData) {
-    battleData.state = 2;
-    battleData.players.push({ team: 2, id:playerId, name: `p${playerId}`, online: 'true', prevCups: 0, CupBonus: 0, prevXp: 0, XpBonus: 0 });
-    BattleHistory=[...BattleHistory,battleData]
-    res.json({
-      roomId:roomId,
-      state:battleData.state,
-      players:battleData.players
-    });
-
-  } else {
-    res.json  ({ error: 'Room not found' });
-  }
-});
-
-
+  
 app.post('/save-battle', (req, res) => {
   let roomId = req.body.roomId;
   let winnerId = req.body.winnerId;
   let looserId=req.body.looserId
   let teamId = req.body.teamId;
-  let battleData = Battles.find(b => b.roomId === roomId);
+  let battleData = BattleHistory.find(b => b.roomId === roomId);
   if (battleData) {
     if (battleData.state === 3) {
       res.json({ error: 'Battle already saved' });
@@ -109,8 +98,8 @@ app.post('/save-battle', (req, res) => {
     let loser = battleData.players.find(p => p.id!== winnerId);
     
     // Update user data
-    let winnerUserData = { mailId: `p${winnerId}@gmail.com`, id: winner.id, name: `p${winner.id}`, online: true, cups: GameStats.win.cups, xp: GameStats.win.xp };
-    let loserUserData = { mailId: `p${looserId}@gmail.com`, id: loser.id, name: `p${loser.id}`, online: true, cups: GameStats.loose.cups, xp: GameStats.loose.xp };
+    let winnerUserData = { mailId: `p${winnerId}@gmail.com`, id: winnerId, name: `p${winnerId}`, online: true, cups: GameStats.win.cups, xp: GameStats.win.xp };
+    let loserUserData = { mailId: `p${looserId}@gmail.com`, id: looserId, name: `p${looserId}`, online: true, cups: GameStats.loose.cups, xp: GameStats.loose.xp };
     res.json({ WinnerNewData: winnerUserData, LooserNewData: loserUserData });
   } else {
     res.json({ error: 'Room not found' });
